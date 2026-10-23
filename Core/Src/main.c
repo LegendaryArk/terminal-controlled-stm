@@ -44,6 +44,12 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+uint8_t tx[30] = "Testing\n\r";
+volatile uint8_t rx_buf[100];
+volatile uint8_t rx_ind = 0;
+volatile uint8_t rx_st = 0;
+uint8_t rx_byte = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,6 +97,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -100,6 +108,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    if (rx_st) {
+      uint8_t rx[3] = { rx_buf[(rx_ind + 99) % 100], '\n', '\r' };
+      HAL_UART_Transmit(&huart2, rx, 3, 10);
+      rx_st = 0;
+    }
+    // HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -224,6 +238,15 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart->Instance == USART2) {
+    rx_buf[rx_ind] = rx_byte;
+    rx_ind = (rx_ind + 1) % 100;
+    rx_st = 1;
+    HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
+  }
+}
 
 /* USER CODE END 4 */
 
