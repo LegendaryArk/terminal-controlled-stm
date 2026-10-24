@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "ring_buffer.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,11 +46,12 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
-uint8_t tx[30] = "Testing\n\r";
-volatile uint8_t rx_buf[100];
-volatile uint8_t rx_ind = 0;
-volatile uint8_t rx_st = 0;
-uint8_t rx_byte = 0;
+uint8_t rx_byte;
+
+uint8_t len = 0;
+uint8_t line[RB_SIZE] = {0xAA};
+uint8_t c;
+bool prev_cr = false;
 
 /* USER CODE END PV */
 
@@ -108,12 +111,27 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (rx_st) {
-      uint8_t rx[3] = { rx_buf[(rx_ind + 99) % 100], '\n', '\r' };
-      HAL_UART_Transmit(&huart2, rx, 3, 10);
-      rx_st = 0;
+    while (rb_pop(&c)) {
+      if (c == '\r' || c == '\n') {
+        if (c == '\n' && prev_cr) { prev_cr = false; continue; }
+        prev_cr = (c == '\r');
+        const uint8_t nl[2] = "\r\n";
+        HAL_UART_Transmit(&huart2, nl, 2, 10);
+        line[len++] = '\r';
+        line[len++] = '\n';
+        HAL_UART_Transmit(&huart2, line, len, 15);
+        len = 0;
+        const uint8_t prompt[2] = "> ";
+        HAL_UART_Transmit(&huart2, prompt, 2, 10);
+      } else if (c == 0x7F || c == 0x08) {
+        if (len > 0) len--;
+        const uint8_t bs[3] = "\b \b";
+        HAL_UART_Transmit(&huart2, bs, 3, 10);
+      } else if (c >= 0x2E && c <= 0x7E && len < RB_SIZE) {
+        line[len++] = c;
+        HAL_UART_Transmit(&huart2, &c, 1, 10);
+      }
     }
-    // HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -241,9 +259,7 @@ static void MX_GPIO_Init(void)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart->Instance == USART2) {
-    rx_buf[rx_ind] = rx_byte;
-    rx_ind = (rx_ind + 1) % 100;
-    rx_st = 1;
+    rb_push(&rx_byte, 1);
     HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
   }
 }
