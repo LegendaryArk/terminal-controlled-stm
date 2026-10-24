@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <string.h>
+
 #include "ring_buffer.h"
 
 /* USER CODE END Includes */
@@ -29,10 +31,20 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef struct {
+  const char *name;
+  void (*handler)(int argc, char **argv);
+} cmd_t;
+
+static void cmd_help_handler(int argc, char **argv);
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define NUM_CMDS 1
+#define MAX_ARGS 8
 
 /* USER CODE END PD */
 
@@ -48,10 +60,18 @@ UART_HandleTypeDef huart2;
 
 uint8_t rx_byte;
 
+const cmd_t cmds[NUM_CMDS] = {
+  { "help", cmd_help_handler }
+};
+
 uint8_t len = 0;
 uint8_t line[RB_SIZE] = {0xAA};
 uint8_t c;
 bool prev_cr = false;
+
+const uint8_t nl[2] = "\r\n";
+const uint8_t prompt[2] = "> ";
+const uint8_t bs[3] = "\b \b";
 
 /* USER CODE END PV */
 
@@ -115,19 +135,33 @@ int main(void)
       if (c == '\r' || c == '\n') {
         if (c == '\n' && prev_cr) { prev_cr = false; continue; }
         prev_cr = (c == '\r');
-        const uint8_t nl[2] = "\r\n";
+        
         HAL_UART_Transmit(&huart2, nl, 2, 10);
-        line[len++] = '\r';
-        line[len++] = '\n';
-        HAL_UART_Transmit(&huart2, line, len, 15);
+
+        line[len] = '\0';
+        char *cmd_name = strtok((char *) line, " ");
+        for (size_t i = 0; i < NUM_CMDS; i++) {
+          if (strcmp(cmd_name, cmds[i].name) == 0) {
+            int argc = 0;
+            char *argv[MAX_ARGS + 1];
+            char *tok = strtok(NULL, " ");
+            while(tok != NULL && argc < MAX_ARGS) {
+              argv[argc++] = tok;
+              tok = strtok(NULL, " ");
+            }
+            argv[argc] = NULL;
+
+            cmds[i].handler(argc, argv);
+            break;
+          }
+        }
         len = 0;
-        const uint8_t prompt[2] = "> ";
+
         HAL_UART_Transmit(&huart2, prompt, 2, 10);
       } else if (c == 0x7F || c == 0x08) {
         if (len > 0) len--;
-        const uint8_t bs[3] = "\b \b";
         HAL_UART_Transmit(&huart2, bs, 3, 10);
-      } else if (c >= 0x2E && c <= 0x7E && len < RB_SIZE) {
+      } else if (c >= 0x20 && c <= 0x7E && len < RB_SIZE) {
         line[len++] = c;
         HAL_UART_Transmit(&huart2, &c, 1, 10);
       }
@@ -256,6 +290,14 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+static void cmd_help_handler(int argc, char** argv) {
+  uint8_t msg[128] = "help help text help msg\r\n";
+  HAL_UART_Transmit(&huart2, msg, sizeof msg, 100);
+  for (int i = 0; i < argc; i++) {
+    HAL_UART_Transmit(&huart2, (const uint8_t *) argv[i], sizeof argv[i], 100);
+  }
+}
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart->Instance == USART2) {
