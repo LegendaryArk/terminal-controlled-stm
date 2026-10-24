@@ -164,11 +164,19 @@ int main(void)
         argv[argc] = NULL;
 
         if (argc > 0) {
+          bool found = false;
           for (size_t i = 0; i < NUM_CMDS; i++) {
             if (strcmp(argv[0], cmds[i].name) == 0) {
+              found = true;
               cmds[i].handler(argc, argv);
               break;
             }
+          }
+
+          if (!found) {
+            char buf[64];
+            snprintf(buf, sizeof buf, "unknown command '%s'\r\n", argv[0]);
+            uart_puts(buf);
           }
         }
 
@@ -343,12 +351,17 @@ static void cmd_help_handler(int argc, char **argv) {
       return;
     }
   }
+
+  snprintf(buf, sizeof buf, "help: unknown command '%s'\r\n", argv[1]);
+  uart_puts(buf);
+  return;
 }
 
 static void cmd_led_handler(int argc, char **argv) {
-  if (argc > 2) return;
+  char buf[64];
 
-  if (argc == 1) {
+  if (argc != 2) {
+    if (argc > 2) uart_puts("led: too many arguments\r\n");
     uart_puts(led_help);
     return;
   }
@@ -359,11 +372,18 @@ static void cmd_led_handler(int argc, char **argv) {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
   } else if (strcmp(argv[1], "toggle") == 0) {
     HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+  } else {
+    snprintf(buf, sizeof buf, "led: unknown option '%s'\r\n", argv[1]);
+    uart_puts(buf);
+    uart_puts(led_help);
   }
 }
 
 static void cmd_uptime_handler(int argc, char **argv) {
-  if (argc > 1) return;
+  if (argc > 1) {
+    uart_puts("uptime: too many arguments\r\n");
+    return;
+  }
 
   char uptime[24];
   snprintf(uptime, sizeof uptime, "%lu ticks", HAL_GetTick());
