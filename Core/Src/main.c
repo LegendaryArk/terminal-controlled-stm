@@ -23,8 +23,10 @@
 /* USER CODE BEGIN Includes */
 
 #include <string.h>
+#include <stdio.h>
 
 #include "ring_buffer.h"
+#include "stm32f4xx_hal.h"
 
 /* USER CODE END Includes */
 
@@ -37,13 +39,16 @@ typedef struct {
 } cmd_t;
 
 static void cmd_help_handler(int argc, char **argv);
+static void cmd_led_handler(int argc, char **argv);
+static void cmd_uptime_handler(int argc, char **argv);
+static void cmd_echo_handler(int argc, char **argv);
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define NUM_CMDS 1
+#define NUM_CMDS 4
 #define MAX_ARGS 8
 
 /* USER CODE END PD */
@@ -61,7 +66,10 @@ UART_HandleTypeDef huart2;
 uint8_t rx_byte;
 
 const cmd_t cmds[NUM_CMDS] = {
-  { "help", cmd_help_handler }
+  { "help", cmd_help_handler },
+  { "led", cmd_led_handler },
+  { "uptime", cmd_uptime_handler },
+  { "echo", cmd_echo_handler }
 };
 
 uint8_t len = 0;
@@ -122,6 +130,9 @@ int main(void)
 
   HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
 
+  HAL_UART_Transmit(&huart2, nl, 2, 10);
+  HAL_UART_Transmit(&huart2, prompt, 2, 10);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -135,7 +146,7 @@ int main(void)
       if (c == '\r' || c == '\n') {
         if (c == '\n' && prev_cr) { prev_cr = false; continue; }
         prev_cr = (c == '\r');
-        
+
         HAL_UART_Transmit(&huart2, nl, 2, 10);
 
         line[len] = '\0';
@@ -269,7 +280,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -277,12 +288,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : LD2_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin;
+  /*Configure GPIO pin : PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -291,12 +302,44 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-static void cmd_help_handler(int argc, char** argv) {
-  uint8_t msg[128] = "help help text help msg\r\n";
+static void cmd_help_handler(int argc, char **argv) {
+  uint8_t msg[256] = "Commands:\r\n  help [command]        Show this list, or details for one command\r\n  led <on|off|toggle>   Control the green user LED (LD2)\r\n  uptime                Show time since reset\r\n  echo [text...]        Print the text back\r\n";
   HAL_UART_Transmit(&huart2, msg, sizeof msg, 100);
-  for (int i = 0; i < argc; i++) {
-    HAL_UART_Transmit(&huart2, (const uint8_t *) argv[i], sizeof argv[i], 100);
+}
+
+static void cmd_led_handler(int argc, char **argv) {
+  if (argc > 1) return;
+
+  if (argc == 0) {
+    const char help_msg[256] = "usage: led <on|off|toggle>\r\n  on       turn the LED on\r\n  off      turn the LED off\r\n  toggle   switch the LED to the opposite state\r\n";
+    HAL_UART_Transmit(&huart2, (const uint8_t *) help_msg, strlen(help_msg), 100);
+    return;
   }
+
+  if (strcmp(argv[0], "on") == 0) {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+  } else if (strcmp(argv[0], "off") == 0) {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+  } else if (strcmp(argv[0], "toggle") == 0) {
+    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+  }
+}
+
+static void cmd_uptime_handler(int argc, char **argv) {
+  if (argc > 0) return;
+
+  char uptime[24];
+  int size = snprintf(uptime, sizeof uptime, "%lu ticks", HAL_GetTick());
+  HAL_UART_Transmit(&huart2, (const uint8_t *) uptime, size, 10);
+  HAL_UART_Transmit(&huart2, nl, 2, 10);
+}
+
+static void cmd_echo_handler(int argc, char **argv) {
+  for (int i = 0; i < argc; i++) {
+    HAL_UART_Transmit(&huart2, (const uint8_t *) argv[i], strlen(argv[i]), 100);
+    HAL_Delay(10);
+  }
+  HAL_UART_Transmit(&huart2, nl, 2, 10);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
