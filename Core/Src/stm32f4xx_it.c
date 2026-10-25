@@ -203,7 +203,10 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 void USART2_IRQHandler(void) {
-  if (USART2->SR & USART_SR_RXNE) rb_push((const uint8_t *) &USART2->DR, 1);
+  if (USART2->SR & USART_SR_RXNE) {
+    uint8_t b = USART2->DR;
+    rb_push((const uint8_t *) &b, 1);
+  }
 }
 
 /* USER CODE BEGIN 1 */
