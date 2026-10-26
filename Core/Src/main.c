@@ -3,42 +3,12 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "ring_buffer.h"
 #include "stm32f446xx.h"
-
-#define LED_PIN (1 << 5)
-
-#define NUM_CMDS (sizeof cmds / sizeof cmds[0])
-#define MAX_ARGS 8
+#include "cmds.h"
+#include "ring_buffer.h"
+#include "uart.h"
 
 volatile uint32_t ms_ticks = 0;
-
-ring_buffer_t rx_rb;
-ring_buffer_t tx_rb;
-
-uint8_t rx_byte;
-
-static void uart_puts(const char *s);
-static void uart_putc(uint8_t c);
-
-typedef struct {
-  const char *name;
-  const char *usage;
-  const char *desc;
-  void (*handler)(int argc, char **argv);
-} cmd_t;
-
-static void cmd_help_handler(int argc, char **argv);
-static void cmd_led_handler(int argc, char **argv);
-static void cmd_uptime_handler(int argc, char **argv);
-static void cmd_echo_handler(int argc, char **argv);
-
-const cmd_t cmds[] = {
-  { "help", "help [command]", "Show this list, or details for one command", cmd_help_handler },
-  { "uptime", "uptime", "Show time since reset", cmd_uptime_handler },
-  { "echo", "echo [text...]", "Print the text back", cmd_echo_handler },
-  { "led", "led <on|off|toggle>", "Control the green user LED (LD2)", cmd_led_handler }
-};
 
 uint8_t len = 0;
 uint8_t line[RB_SIZE] = {0xAA};
@@ -94,7 +64,7 @@ int main(void) {
 
         if (argc > 0) {
           bool found = false;
-          for (size_t i = 0; i < NUM_CMDS; i++) {
+          for (size_t i = 0; i < num_cmds; i++) {
             if (strcmp(argv[0], cmds[i].name) == 0) {
               found = true;
               cmds[i].handler(argc, argv);
@@ -123,91 +93,4 @@ int main(void) {
       }
     }
   }
-}
-
-static void uart_putc(uint8_t c) {
-  while (!rb_push(&tx_rb, &c, 1)) {}
-  USART2->CR1 |= USART_CR1_TXEIE;
-}
-
-static void uart_puts(const char *s) {
-  while (*s) uart_putc((uint8_t) *s++);
-}
-
-static const char led_help[] =
-  "usage: led <on|off|toggle>\r\n"
-  "  on        turn the LED on\r\n"
-  "  off       turn the LED off\r\n"
-  "  toggle    switch the LED to the opposite state\r\n";
-
-static void cmd_help_handler(int argc, char **argv) {
-  char buf[96];
-  if (argc == 1) {
-    uart_puts("Commands:\r\n");
-    for (size_t i = 0; i < NUM_CMDS; i++) {
-      snprintf(buf, sizeof buf, "  %-21s %s \r\n", cmds[i].usage, cmds[i].desc);
-      uart_puts(buf);
-    }
-    return;
-  }
-
-  if (strcmp(argv[1], "led") == 0) {
-    uart_puts(led_help);
-    return;
-  }
-
-  for (size_t i = 0; i < NUM_CMDS; i++) {
-    if (strcmp(argv[1], cmds[i].name) == 0) {
-      snprintf(buf, sizeof buf, "usage: %s\r\n  %s\r\n", cmds[i].usage, cmds[i].desc);
-      uart_puts(buf);
-      return;
-    }
-  }
-
-  snprintf(buf, sizeof buf, "help: unknown command '%s'\r\n", argv[1]);
-  uart_puts(buf);
-  return;
-}
-
-static void cmd_led_handler(int argc, char **argv) {
-  char buf[64];
-
-  if (argc != 2) {
-    if (argc > 2) uart_puts("led: too many arguments\r\n");
-    uart_puts(led_help);
-    return;
-  }
-
-  if (strcmp(argv[1], "on") == 0) {
-    GPIOA->BSRR = LED_PIN;
-  } else if (strcmp(argv[1], "off") == 0) {
-    GPIOA->BSRR = LED_PIN << 16;
-  } else if (strcmp(argv[1], "toggle") == 0) {
-    uint32_t odr = GPIOA->ODR;
-    GPIOA->BSRR = ((odr & LED_PIN) << 16) | (~odr & LED_PIN);
-  } else {
-    snprintf(buf, sizeof buf, "led: unknown option '%s'\r\n", argv[1]);
-    uart_puts(buf);
-    uart_puts(led_help);
-  }
-}
-
-static void cmd_uptime_handler(int argc, char **argv) {
-  if (argc > 1) {
-    uart_puts("uptime: too many arguments\r\n");
-    return;
-  }
-
-  char uptime[24];
-  snprintf(uptime, sizeof uptime, "%lu ticks", ms_ticks);
-  uart_puts(uptime);
-  uart_puts(nl);
-}
-
-static void cmd_echo_handler(int argc, char **argv) {
-  for (int i = 1; i < argc; i++) {
-    uart_puts(argv[i]);
-    uart_puts(" ");
-  }
-  uart_puts(nl);
 }
