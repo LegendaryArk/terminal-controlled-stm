@@ -60,6 +60,9 @@
 
 extern volatile uint32_t ms_ticks;
 
+extern ring_buffer_t rx_rb;
+extern ring_buffer_t tx_rb;
+
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -203,9 +206,17 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 void USART2_IRQHandler(void) {
-  if (USART2->SR & USART_SR_RXNE) {
+  uint8_t sr = USART2->SR;
+
+  if (sr & USART_SR_RXNE) {
     uint8_t b = USART2->DR;
-    rb_push((const uint8_t *) &b, 1);
+    rb_push(&rx_rb, (const uint8_t *) &b, 1);
+  }
+  
+  if ((USART2->CR1 & USART_CR1_TXEIE) && (sr & USART_SR_TXE)) {
+    uint8_t b;
+    if (rb_pop(&tx_rb, &b)) USART2->DR = b;
+    else USART2->CR1 &= ~USART_CR1_TXEIE;
   }
 }
 

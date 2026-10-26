@@ -6,6 +6,18 @@
 #include "ring_buffer.h"
 #include "stm32f446xx.h"
 
+#define LED_PIN (1 << 5)
+
+#define NUM_CMDS (sizeof cmds / sizeof cmds[0])
+#define MAX_ARGS 8
+
+volatile uint32_t ms_ticks = 0;
+
+ring_buffer_t rx_rb;
+ring_buffer_t tx_rb;
+
+uint8_t rx_byte;
+
 static void uart_puts(const char *s);
 static void uart_putc(uint8_t c);
 
@@ -21,20 +33,11 @@ static void cmd_led_handler(int argc, char **argv);
 static void cmd_uptime_handler(int argc, char **argv);
 static void cmd_echo_handler(int argc, char **argv);
 
-#define LED_PIN (1 << 5)
-
-#define NUM_CMDS (sizeof cmds / sizeof cmds[0])
-#define MAX_ARGS 8
-
-volatile uint32_t ms_ticks = 0;
-
-uint8_t rx_byte;
-
 const cmd_t cmds[] = {
   { "help", "help [command]", "Show this list, or details for one command", cmd_help_handler },
-  { "led", "led <on|off|toggle>", "Control the green user LED (LD2)", cmd_led_handler },
   { "uptime", "uptime", "Show time since reset", cmd_uptime_handler },
-  { "echo", "echo [text...]", "Print the text back", cmd_echo_handler }
+  { "echo", "echo [text...]", "Print the text back", cmd_echo_handler },
+  { "led", "led <on|off|toggle>", "Control the green user LED (LD2)", cmd_led_handler }
 };
 
 uint8_t len = 0;
@@ -47,6 +50,9 @@ const char prompt[] = "> ";
 const char bs[] = "\b \b";
 
 int main(void) {
+  rb_reset(&rx_rb);
+  rb_reset(&tx_rb);
+
   SysTick->LOAD = (SystemCoreClock / 1000) - 1;
   SysTick->VAL = 0;
   SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk;
@@ -69,7 +75,7 @@ int main(void) {
   uart_puts(prompt);
 
   while (1) {
-    while (rb_pop(&c)) {
+    while (rb_pop(&rx_rb, &c)) {
       if (c == '\r' || c == '\n') {
         if (c == '\n' && prev_cr) { prev_cr = false; continue; }
         prev_cr = (c == '\r');
@@ -120,8 +126,8 @@ int main(void) {
 }
 
 static void uart_putc(uint8_t c) {
-  while (!(USART2->SR & USART_SR_TXE)) {}
-  USART2->DR = c;
+  while (!rb_push(&tx_rb, &c, 1)) {}
+  USART2->CR1 |= USART_CR1_TXEIE;
 }
 
 static void uart_puts(const char *s) {
