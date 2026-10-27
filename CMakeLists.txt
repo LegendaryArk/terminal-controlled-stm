@@ -48,6 +48,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/ring_buffer.c
     Core/Src/cmds.c
     Core/Src/uart.c
+    Core/Src/led.c
 )
 
 # Add include paths

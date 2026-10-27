@@ -7,6 +7,7 @@
 #include "cmds.h"
 #include "ring_buffer.h"
 #include "uart.h"
+#include "led.h"
 
 volatile uint32_t ms_ticks = 0;
 
@@ -92,5 +93,7 @@ int main(void) {
         uart_putc(c);
       }
     }
+
+    led_update(&led);
   }
 }

@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "stm32f446xx.h"
 #include "uart.h"
@@ -10,7 +11,7 @@ const cmd_t cmds[] = {
   { "help", "help [command]", "Show this list, or details for one command", cmd_help },
   { "uptime", "uptime", "Show time since reset", cmd_uptime },
   { "echo", "echo [text...]", "Print the text back", cmd_echo },
-  { "led", "led <on|off|toggle>", "Control the green user LED (LD2)", cmd_led }
+  { "led", "led <on|off|toggle|blink [ms]>", "Control the green user LED (LD2)", cmd_led }
 };
 
 const size_t num_cmds = sizeof cmds / sizeof cmds[0];
@@ -18,10 +19,13 @@ const size_t num_cmds = sizeof cmds / sizeof cmds[0];
 static const char nl[] = "\r\n";
 
 static const char led_help[] =
-  "usage: led <on|off|toggle>\r\n"
+  "usage: led <on|off|toggle|blink [ms]>\r\n"
   "  on        turn the LED on\r\n"
   "  off       turn the LED off\r\n"
-  "  toggle    switch the LED to the opposite state\r\n";
+  "  toggle    switch the LED to the opposite state\r\n"
+  "  blink     toggle the LED every [ms] milliseconds (default 1000)\r\n"
+  "\r\n"
+  "on, off, and toggle stop blinking.\r\n";
 
 void cmd_help(int argc, char **argv) {
   char buf[96];
@@ -52,29 +56,6 @@ void cmd_help(int argc, char **argv) {
   return;
 }
 
-void cmd_led(int argc, char **argv) {
-  char buf[64];
-
-  if (argc != 2) {
-    if (argc > 2) uart_puts("led: too many arguments\r\n");
-    uart_puts(led_help);
-    return;
-  }
-
-  if (strcmp(argv[1], "on") == 0) {
-    GPIOA->BSRR = LED_PIN;
-  } else if (strcmp(argv[1], "off") == 0) {
-    GPIOA->BSRR = LED_PIN << 16;
-  } else if (strcmp(argv[1], "toggle") == 0) {
-    uint32_t odr = GPIOA->ODR;
-    GPIOA->BSRR = ((odr & LED_PIN) << 16) | (~odr & LED_PIN);
-  } else {
-    snprintf(buf, sizeof buf, "led: unknown option '%s'\r\n", argv[1]);
-    uart_puts(buf);
-    uart_puts(led_help);
-  }
-}
-
 void cmd_uptime(int argc, char **argv) {
   if (argc > 1) {
     uart_puts("uptime: too many arguments\r\n");
@@ -93,4 +74,39 @@ void cmd_echo(int argc, char **argv) {
     uart_puts(" ");
   }
   uart_puts(nl);
+}
+
+void cmd_led(int argc, char **argv) {
+  char buf[64];
+
+  if (argc != 2 && argc != 3) {
+    if (argc > 3) uart_puts("led: too many arguments\r\n");
+    uart_puts(led_help);
+    return;
+  }
+
+  if (strcmp(argv[1], "on") == 0) {
+    led_on(&led);
+  } else if (strcmp(argv[1], "off") == 0) {
+    led_off(&led);
+  } else if (strcmp(argv[1], "toggle") == 0) {
+    led_toggle(&led);
+  } else if (strcmp(argv[1], "blink") == 0) {
+    long delay_ms = 1000;
+    if (argc == 3) {
+        char *endptr;
+        delay_ms = strtol(argv[2], &endptr, 0);
+        if (delay_ms <= 0 || *endptr != '\0') {
+            snprintf(buf, sizeof buf, "led: invalid argument '%s'\r\n", argv[2]);
+            uart_puts(buf);
+            uart_puts(led_help);
+            return;
+        }
+    }
+    led_blink(&led, delay_ms);
+  } else {
+    snprintf(buf, sizeof buf, "led: unknown option '%s'\r\n", argv[1]);
+    uart_puts(buf);
+    uart_puts(led_help);
+  }
 }

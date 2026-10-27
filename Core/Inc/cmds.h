@@ -4,11 +4,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "led.h"
+
 #define MAX_ARGS 8
 
-#define LED_PIN (1 << 5)
-
 extern volatile uint32_t ms_ticks;
+extern led_t led;
 
 typedef struct {
     const char *name;
